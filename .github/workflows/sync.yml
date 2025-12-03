@@ -1,0 +1,43 @@
+name: Toolbank Sync
+
+on:
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: pip install openpyxl
+      
+      - name: Run Toolbank sync
+        env:
+          TOOLBANK_FTP_USER: ${{ secrets.TOOLBANK_FTP_USER }}
+          TOOLBANK_FTP_PASS: ${{ secrets.TOOLBANK_FTP_PASS }}
+        run: python sync_toolbank.py
+      
+      - name: Commit sync results
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add toolbank_import.csv known_skus.json
+          git diff --staged --quiet || git commit -m "🔄 Daily sync - $(date +'%Y-%m-%d')"
+      
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: main
