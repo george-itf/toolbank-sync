@@ -12,7 +12,6 @@ import re
 from datetime import datetime
 from pathlib import Path
 import openpyxl
-from io import BytesIO
 
 # ============================================================================
 # CONFIGURATION
@@ -22,8 +21,8 @@ FTP_HOST = "ftp1.toolbank.com"
 FTP_USER = os.environ.get("TOOLBANK_FTP_USER", "Invictatools_9051")
 FTP_PASS = os.environ.get("TOOLBANK_FTP_PASS", "")
 
-# Your Cloudflare R2 image URL
-IMAGE_BASE_URL = "https://pub-a85f523f346d43c1bec0c5fe4f1d0b4b.r2.dev/"
+# GitHub raw URL for images
+IMAGE_BASE_URL = "https://raw.githubusercontent.com/george-itf/TB_Images/main/"
 
 # Files to download from FTP
 FTP_FILES = {
@@ -32,7 +31,7 @@ FTP_FILES = {
     "availability": "UnitData-01/Availability01D.csv",
 }
 
-# Output directory (same folder as script for simplicity)
+# Output directory
 OUTPUT_DIR = Path(__file__).parent
 KNOWN_SKUS_FILE = OUTPUT_DIR / "known_skus.json"
 
@@ -41,7 +40,6 @@ KNOWN_SKUS_FILE = OUTPUT_DIR / "known_skus.json"
 # ============================================================================
 
 def slugify(text):
-    """Convert text to URL-safe handle"""
     text = text.lower().strip()
     text = re.sub(r'[^\w\s-]', '', text)
     text = re.sub(r'[-\s]+', '-', text)
@@ -49,7 +47,6 @@ def slugify(text):
 
 
 def connect_ftp():
-    """Connect to Toolbank FTP server"""
     print(f"[FTP] Connecting to {FTP_HOST}...")
     ftp = ftplib.FTP(FTP_HOST)
     ftp.login(FTP_USER, FTP_PASS)
@@ -58,14 +55,11 @@ def connect_ftp():
 
 
 def download_file(ftp, remote_path, local_path):
-    """Download a file from FTP"""
     print(f"[FTP] Downloading {remote_path}...")
     local_path = Path(local_path)
     local_path.parent.mkdir(parents=True, exist_ok=True)
-    
     with open(local_path, 'wb') as f:
         ftp.retrbinary(f'RETR {remote_path}', f.write)
-    
     print(f"[FTP] Saved to {local_path}")
     return local_path
 
@@ -75,7 +69,6 @@ def download_file(ftp, remote_path, local_path):
 # ============================================================================
 
 def parse_pricing_csv(file_path):
-    """Parse pricing file"""
     pricing = {}
     with open(file_path, 'r', encoding='utf-8-sig') as f:
         reader = csv.DictReader(f)
@@ -91,7 +84,6 @@ def parse_pricing_csv(file_path):
 
 
 def parse_availability_csv(file_path):
-    """Parse stock levels"""
     stock = {}
     with open(file_path, 'r', encoding='utf-8-sig') as f:
         reader = csv.DictReader(f)
@@ -105,25 +97,19 @@ def parse_availability_csv(file_path):
 
 
 def parse_products_xlsx(file_path):
-    """Parse product data from Excel"""
     products = {}
-    
     print(f"[DATA] Loading Excel file...")
     wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
     sheet = wb.active
-    
     headers = None
     for i, row in enumerate(sheet.iter_rows(values_only=True)):
         if i == 0:
             headers = [str(h).strip() if h else f'col_{j}' for j, h in enumerate(row)]
             continue
-        
         row_dict = dict(zip(headers, row))
         sku = str(row_dict.get('StockCode', '')).strip()
-        
         if not sku:
             continue
-        
         products[sku] = {
             'sku': sku,
             'title': str(row_dict.get('Product Name', '')).strip(),
@@ -137,7 +123,6 @@ def parse_products_xlsx(file_path):
             'class_b': str(row_dict.get('ClassBName', '')).strip(),
             'class_c': str(row_dict.get('ClassCName', '')).strip(),
         }
-    
     wb.close()
     print(f"[DATA] Loaded {len(products)} products")
     return products
@@ -148,7 +133,6 @@ def parse_products_xlsx(file_path):
 # ============================================================================
 
 def load_known_skus():
-    """Load list of SKUs already in Shopify"""
     if KNOWN_SKUS_FILE.exists():
         with open(KNOWN_SKUS_FILE, 'r') as f:
             data = json.load(f)
@@ -157,12 +141,8 @@ def load_known_skus():
 
 
 def save_known_skus(skus):
-    """Save updated list of known SKUs"""
     with open(KNOWN_SKUS_FILE, 'w') as f:
-        json.dump({
-            'skus': list(skus),
-            'updated': datetime.now().isoformat()
-        }, f)
+        json.dump({'skus': list(skus), 'updated': datetime.now().isoformat()}, f)
     print(f"[DATA] Saved {len(skus)} known SKUs")
 
 
@@ -171,8 +151,6 @@ def save_known_skus(skus):
 # ============================================================================
 
 def generate_matrixify_csv(products, pricing, stock, known_skus, output_path):
-    """Generate Matrixify-compatible CSV"""
-    
     all_skus = set(products.keys())
     new_skus = all_skus - known_skus
     existing_skus = all_skus & known_skus
@@ -193,7 +171,6 @@ def generate_matrixify_csv(products, pricing, stock, known_skus, output_path):
     ]
     
     rows = []
-    
     for sku, product in products.items():
         price_data = pricing.get(sku, {})
         stock_qty = stock.get(sku, 0)
@@ -215,18 +192,16 @@ def generate_matrixify_csv(products, pricing, stock, known_skus, output_path):
         if is_new:
             price = round(price_data.get('rrp', 0), 2)
         else:
-            price = ''  # Empty = don't update
+            price = ''
         
-        # Tags
         tags = [t for t in [product['class_a'], product['class_b'], product['class_c']] if t]
         tags.append('Toolbank')
         if is_new:
             tags.append('New-Import')
         
-        # Handle
         handle = slugify(f"{product['title']}-{sku}")
         
-        # Image URL - using your Cloudflare R2 bucket
+        # Image URL - GitHub raw URL
         image_ref = product['image_ref'].strip() or sku
         image_url = f"{IMAGE_BASE_URL}{image_ref}.JPG"
         
@@ -254,10 +229,8 @@ def generate_matrixify_csv(products, pricing, stock, known_skus, output_path):
             'Status': status,
             'Variant Inventory Qty': stock_qty,
         }
-        
         rows.append(row)
     
-    # Write CSV
     csv_path = output_path / "toolbank_import.csv"
     with open(csv_path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=headers)
@@ -265,10 +238,7 @@ def generate_matrixify_csv(products, pricing, stock, known_skus, output_path):
         writer.writerows(rows)
     
     print(f"[OUTPUT] Generated {csv_path} with {len(rows)} products")
-    
-    # Update known SKUs
     updated_known = known_skus | (all_skus - discontinued_skus)
-    
     return csv_path, updated_known
 
 
@@ -288,19 +258,14 @@ def main():
     
     try:
         ftp = connect_ftp()
-        
         pricing_file = OUTPUT_DIR / "temp_pricing.csv"
         download_file(ftp, FTP_FILES['pricing'], pricing_file)
-        
         products_file = OUTPUT_DIR / "temp_products.xlsx"
         download_file(ftp, FTP_FILES['products'], products_file)
-        
         availability_file = OUTPUT_DIR / "temp_availability.csv"
         download_file(ftp, FTP_FILES['availability'], availability_file)
-        
         ftp.quit()
         print("[FTP] Disconnected")
-        
     except Exception as e:
         print(f"[ERROR] FTP failed: {e}")
         raise
