@@ -21,8 +21,8 @@ FTP_HOST = "ftp1.toolbank.com"
 FTP_USER = os.environ.get("TOOLBANK_FTP_USER", "Invictatools_9051")
 FTP_PASS = os.environ.get("TOOLBANK_FTP_PASS", "")
 
-# GitHub raw URL for images
-IMAGE_BASE_URL = "https://raw.githubusercontent.com/george-itf/TB_Images/main/"
+# Cloudflare R2 image URL
+IMAGE_BASE_URL = "https://pub-a85f523f346d43c1bec0c5fe4f1d0b4b.r2.dev/"
 
 # Files to download from FTP
 FTP_FILES = {
@@ -171,6 +171,9 @@ def generate_matrixify_csv(products, pricing, stock, known_skus, output_path):
     ]
     
     rows = []
+    in_stock_count = 0
+    zero_stock_count = 0
+    
     for sku, product in products.items():
         price_data = pricing.get(sku, {})
         stock_qty = stock.get(sku, 0)
@@ -181,12 +184,29 @@ def generate_matrixify_csv(products, pricing, stock, known_skus, output_path):
         if is_discontinued:
             command = 'DELETE'
             status = 'archived'
+            published = 'FALSE'
         elif is_new:
             command = 'MERGE'
-            status = 'active'
+            # Stock = 0 → draft, Stock > 0 → active
+            if stock_qty > 0:
+                status = 'active'
+                published = 'TRUE'
+                in_stock_count += 1
+            else:
+                status = 'draft'
+                published = 'FALSE'
+                zero_stock_count += 1
         else:
             command = 'UPDATE'
-            status = 'active'
+            # Stock = 0 → draft, Stock > 0 → active
+            if stock_qty > 0:
+                status = 'active'
+                published = 'TRUE'
+                in_stock_count += 1
+            else:
+                status = 'draft'
+                published = 'FALSE'
+                zero_stock_count += 1
         
         # Price: RRP for new products, empty for existing (preserves your prices)
         if is_new:
@@ -201,7 +221,7 @@ def generate_matrixify_csv(products, pricing, stock, known_skus, output_path):
         
         handle = slugify(f"{product['title']}-{sku}")
         
-        # Image URL - GitHub raw URL
+        # Image URL - Cloudflare R2
         image_ref = product['image_ref'].strip() or sku
         image_url = f"{IMAGE_BASE_URL}{image_ref}.JPG"
         
@@ -213,7 +233,7 @@ def generate_matrixify_csv(products, pricing, stock, known_skus, output_path):
             'Vendor': product['vendor'],
             'Type': product.get('class_b', ''),
             'Tags': ', '.join(tags),
-            'Published': 'TRUE' if status == 'active' else 'FALSE',
+            'Published': published,
             'Variant SKU': sku,
             'Variant Grams': int(product.get('weight', 0) * 1000),
             'Variant Inventory Tracker': 'shopify',
@@ -230,6 +250,9 @@ def generate_matrixify_csv(products, pricing, stock, known_skus, output_path):
             'Variant Inventory Qty': stock_qty,
         }
         rows.append(row)
+    
+    print(f"[SYNC] In stock (active): {in_stock_count}")
+    print(f"[SYNC] Zero stock (draft): {zero_stock_count}")
     
     csv_path = output_path / "toolbank_import.csv"
     with open(csv_path, 'w', newline='', encoding='utf-8') as f:
