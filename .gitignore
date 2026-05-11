@@ -1,0 +1,9 @@
+# Python build artefacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Temp files created by sync_toolbank.py during FTP download
+temp_pricing.csv
+temp_products.xlsx
+temp_availability.csv
