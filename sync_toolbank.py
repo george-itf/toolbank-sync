@@ -267,31 +267,38 @@ def save_known_skus(skus, archived):
 # ============================================================================
 
 def generate_matrixify_csv(products, pricing, stock, known_skus, archived_skus, output_path):
-    all_skus = set(products.keys())
-    new_skus = all_skus - known_skus
-    existing_skus = all_skus & known_skus
-    discontinued_skus = {sku for sku, p in products.items() if p.get('discontinued')}
+    """Quantity-only sync.
 
-    # Ghosts: tracked in known_skus but no longer in the feed at all.
-    # Exclude any we've already archived in a previous run to keep the CSV from
-    # growing forever, and exclude any that have come back (handled as existing).
-    ghost_candidates = known_skus - all_skus - archived_skus
-    ghost_pct = (100.0 * len(ghost_candidates) / len(known_skus)) if known_skus else 0.0
+    For each SKU that exists in BOTH the Toolbank feed AND the Shopify
+    catalogue (known_skus) we emit a row that sets:
+      - Variant Inventory Qty (from Toolbank's availability feed)
+      - Status / Published   (active when stock > 0, draft when 0,
+                              archived if DiscontinuedFlag=1)
+    All other columns are left blank so Matrixify treats them as unchanged.
 
-    print(f"[SYNC] Total products in feed: {len(all_skus)}")
-    print(f"[SYNC] New products: {len(new_skus)}")
-    print(f"[SYNC] Existing products: {len(existing_skus)}")
-    print(f"[SYNC] Discontinued: {len(discontinued_skus)}")
-    print(f"[SYNC] Ghost candidates (in known_skus, absent from feed): "
-          f"{len(ghost_candidates)} ({ghost_pct:.2f}% of known)")
+    Explicitly does NOT:
+      - Create new products in Shopify (SKUs in feed but not in known_skus
+        are skipped entirely — no row emitted).
+      - Update price, title, description, vendor, type, tags, image,
+        weight, or barcode on any product.
+      - Archive products that have disappeared entirely from the feed
+        (known_skus minus feed) — the safety gate logic is preserved in
+        the JSON state (archived_skus) but no archive rows are emitted
+        for orphans. Manage those manually.
 
-    if ghost_pct > GHOST_ARCHIVE_PCT_LIMIT:
-        print(f"[WARN] Ghost ratio {ghost_pct:.1f}% exceeds safety cap "
-              f"{GHOST_ARCHIVE_PCT_LIMIT}% — skipping ghost archival this run. "
-              f"Check Toolbank export integrity.")
-        ghosts_to_archive = set()
-    else:
-        ghosts_to_archive = ghost_candidates
+    `pricing` is accepted but unused; kept in the signature so the rest
+    of the pipeline (parsers, main) doesn't need to change.
+    """
+    feed_skus = set(products.keys())
+    targets = feed_skus & known_skus
+    skipped_not_in_shopify = feed_skus - known_skus
+    shopify_orphans = known_skus - feed_skus
+
+    print(f"[SYNC] Toolbank feed:                       {len(feed_skus)}")
+    print(f"[SYNC] Shopify catalogue (known_skus):      {len(known_skus)}")
+    print(f"[SYNC] Targets (in both, will be updated):  {len(targets)}")
+    print(f"[SYNC] Skipped: in feed, not in Shopify:    {len(skipped_not_in_shopify)}")
+    print(f"[SYNC] Skipped: in Shopify, not in feed:    {len(shopify_orphans)}")
 
     headers = [
         'Command', 'Handle', 'Title', 'Body (HTML)', 'Vendor', 'Type', 'Tags',
@@ -302,95 +309,27 @@ def generate_matrixify_csv(products, pricing, stock, known_skus, archived_skus, 
     ]
 
     rows = []
-    in_stock_count = 0
-    zero_stock_count = 0
+    active_count = 0
+    draft_count = 0
     archived_count = 0
-    zero_rrp_held = 0
     cstock_capped = 0
 
-    for sku, product in products.items():
-        price_data = pricing.get(sku, {})
-        stock_qty = stock.get(sku, 0)
-        if stock_qty >= CSTOCK_CAP:
+    for sku in sorted(targets):
+        product = products[sku]
+        qty = stock.get(sku, 0)
+        if qty >= CSTOCK_CAP:
             cstock_capped += 1
 
-        is_new = sku in new_skus
-        is_discontinued = product.get('discontinued', False)
-        rrp = price_data.get('rrp', 0) or 0
-
-        if is_discontinued:
-            # Documented behaviour: archive (not delete) — preserves history and
-            # is reversible. Matches the README.
-            command = 'UPDATE'
-            status = 'archived'
-            published = 'FALSE'
+        if product.get('discontinued', False):
+            status, published = 'archived', 'FALSE'
             archived_count += 1
-        elif is_new and rrp <= 0:
-            # Refuse to publish a new product with no usable price; stage as draft
-            # so the merchant can intervene before it goes live at £0.00.
-            command = 'MERGE'
-            status = 'draft'
-            published = 'FALSE'
-            zero_rrp_held += 1
-        elif is_new:
-            command = 'MERGE'
-            if stock_qty > 0:
-                status, published = 'active', 'TRUE'
-                in_stock_count += 1
-            else:
-                status, published = 'draft', 'FALSE'
-                zero_stock_count += 1
+        elif qty > 0:
+            status, published = 'active', 'TRUE'
+            active_count += 1
         else:
-            command = 'UPDATE'
-            if stock_qty > 0:
-                status, published = 'active', 'TRUE'
-                in_stock_count += 1
-            else:
-                status, published = 'draft', 'FALSE'
-                zero_stock_count += 1
+            status, published = 'draft', 'FALSE'
+            draft_count += 1
 
-        # Price: RRP for new products, empty for existing (preserves manual edits)
-        price = round(rrp, 2) if is_new else ''
-
-        raw_tags = [product['class_a'], product['class_b'], product['class_c'], 'Toolbank']
-        if is_new:
-            raw_tags.append('New-Import')
-        tags = clean_tags(raw_tags)
-
-        handle = slugify(f"{product['title']}-{sku}")
-
-        image_ref = product['image_ref'].strip() or sku
-        image_url = f"{IMAGE_BASE_URL}{image_ref}.JPG"
-
-        rows.append({
-            'Command': command,
-            'Handle': handle,
-            'Title': product['title'],
-            'Body (HTML)': product['description'],
-            'Vendor': product['vendor'],
-            'Type': product.get('class_b', ''),
-            'Tags': ', '.join(tags),
-            'Published': published,
-            'Variant SKU': sku,
-            'Variant Grams': int(product.get('weight', 0) * 1000),
-            'Variant Inventory Tracker': 'shopify',
-            'Variant Inventory Policy': 'deny',
-            'Variant Fulfillment Service': 'manual',
-            'Variant Price': price,
-            'Variant Compare At Price': '',
-            'Variant Requires Shipping': 'TRUE',
-            'Variant Taxable': 'TRUE',
-            'Variant Barcode': clean_barcode(product.get('barcode', '')),
-            'Image Src': image_url,
-            'Image Position': '1',
-            'Status': status,
-            'Variant Inventory Qty': stock_qty,
-        })
-
-    # Emit minimal archive rows for ghost SKUs. Matrixify matches on Variant SKU
-    # when Handle is blank; if a SKU has already been removed from Shopify, the
-    # row is a no-op.
-    for sku in sorted(ghosts_to_archive):
         rows.append({
             'Command': 'UPDATE',
             'Handle': '',
@@ -399,7 +338,7 @@ def generate_matrixify_csv(products, pricing, stock, known_skus, archived_skus, 
             'Vendor': '',
             'Type': '',
             'Tags': '',
-            'Published': 'FALSE',
+            'Published': published,
             'Variant SKU': sku,
             'Variant Grams': '',
             'Variant Inventory Tracker': '',
@@ -412,16 +351,14 @@ def generate_matrixify_csv(products, pricing, stock, known_skus, archived_skus, 
             'Variant Barcode': '',
             'Image Src': '',
             'Image Position': '',
-            'Status': 'archived',
-            'Variant Inventory Qty': '',
+            'Status': status,
+            'Variant Inventory Qty': qty,
         })
 
-    print(f"[SYNC] In stock (active): {in_stock_count}")
-    print(f"[SYNC] Zero stock (draft): {zero_stock_count}")
-    print(f"[SYNC] Discontinued (archived): {archived_count}")
-    print(f"[SYNC] Held as draft for zero RRP: {zero_rrp_held}")
+    print(f"[SYNC] -> active:   {active_count}")
+    print(f"[SYNC] -> draft:    {draft_count}")
+    print(f"[SYNC] -> archived: {archived_count}")
     print(f"[SYNC] At cstock cap ({CSTOCK_CAP}): {cstock_capped}")
-    print(f"[SYNC] Ghosts archived this run: {len(ghosts_to_archive)}")
 
     csv_path = output_path / "toolbank_import.csv"
     with open(csv_path, 'w', newline='', encoding='utf-8') as f:
@@ -431,16 +368,12 @@ def generate_matrixify_csv(products, pricing, stock, known_skus, archived_skus, 
 
     print(f"[OUTPUT] Generated {csv_path} with {len(rows)} rows")
 
-    # New state:
-    #   known    = previously-known SKUs ∪ all current feed SKUs (minus discontinued).
-    #              Discontinued items remain in known so that a flag-flip-back keeps
-    #              them classified as existing (price preserved, not reset to RRP).
-    #   archived = previously-archived ∪ newly-archived-this-run, minus anything
-    #              that's come back in the feed. Discontinued items are re-emitted
-    #              every run while in the feed; only true ghosts persist here.
-    updated_known = known_skus | (all_skus - discontinued_skus)
-    updated_archived = (archived_skus | ghosts_to_archive) - all_skus
-    return csv_path, updated_known, updated_archived
+    # State unchanged: known_skus reflects what's in Shopify (seeded from a
+    # Shopify export). We don't grow it from feed data because growing it
+    # would re-introduce the drift problem this script was rebuilt to fix.
+    # Re-seed known_skus.json from a fresh Shopify export whenever you add
+    # products manually in Shopify.
+    return csv_path, known_skus, archived_skus
 
 
 # ============================================================================
