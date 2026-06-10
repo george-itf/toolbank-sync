@@ -1,5 +1,5 @@
 {
-  "updated": "2026-06-09T04:25:59.745754",
+  "updated": "2026-06-10T04:30:59.646931",
   "skus": [
     "012-ELX3",
     "0305394458544",
@@ -18485,6 +18485,7 @@
     "FPPCR10MSE",
     "FPPCR15",
     "FPPCR15MSEL",
+    "FPPCR18MW",
     "FPPCR20110",
     "FPPCR20240",
     "FPPCR20M",
@@ -18497,6 +18498,8 @@
     "FPPCR40240HD",
     "FPPCR50M",
     "FPPCR50ML",
+    "FPPCRH15M",
+    "FPPCRWSPIKE",
     "FPPDH240V30L",
     "FPPDH30LF",
     "FPPDH30LT",
