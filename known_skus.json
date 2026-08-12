@@ -1,5 +1,5 @@
 {
-  "updated": "2026-08-11T04:14:53.500173",
+  "updated": "2026-08-12T04:43:01.614445",
   "skus": [
     "012-ELX3",
     "0305394458544",
@@ -12137,6 +12137,7 @@
     "FAIBPH8",
     "FAIBPH8FG",
     "FAIBPH8FSC",
+    "FAIBPVC13A",
     "FAIBPVC24A",
     "FAIBR13",
     "FAIBR9",
@@ -12362,6 +12363,7 @@
     "FAICM4",
     "FAICM412",
     "FAICM412FSC",
+    "FAICM4FSC",
     "FAICM5",
     "FAICM5FSC",
     "FAICM90HD",
@@ -15521,6 +15523,7 @@
     "FAIWCARV6",
     "FAIWCARV6F",
     "FAIWCARV7",
+    "FAIWCARV7F",
     "FAIWCARV8",
     "FAIWCARV8F",
     "FAIWCARV9",
