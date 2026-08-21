@@ -1,5 +1,5 @@
 {
-  "updated": "2026-08-20T03:40:57.482352",
+  "updated": "2026-08-21T03:45:07.093032",
   "skus": [
     "012-ELX3",
     "0305394458544",
@@ -510,6 +510,7 @@
     "ABU99953",
     "ABU99954",
     "ABUAC4223",
+    "ABUAC4223N",
     "ABUAC7023",
     "ABUAC7124",
     "ABUAC7303",
@@ -23441,8 +23442,11 @@
     "L/HECAMP750",
     "L/HEFOC100",
     "L/HEFOC1500",
+    "L/HEFOC2000R",
+    "L/HEFOC3500R",
     "L/HEFOC350L",
     "L/HEFOC400",
+    "L/HEFOC500PR",
     "L/HEFOC800",
     "L/HEHEAD150R",
     "L/HEHEAD280",
