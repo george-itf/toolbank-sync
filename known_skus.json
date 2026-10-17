@@ -1,5 +1,5 @@
 {
-  "updated": "2026-10-16T07:48:43.960514",
+  "updated": "2026-10-17T07:26:19.049567",
   "skus": [
     "012-ELX3",
     "0305394458544",
@@ -19352,6 +19352,7 @@
     "GRGFILLCC473",
     "GRGGA200WH",
     "GRGGA266U",
+    "GRGGASDISP",
     "GRGGDST73",
     "GRGGES25",
     "GRGGG1",
@@ -19367,6 +19368,7 @@
     "GRGGHDEF353",
     "GRGGHDSA400",
     "GRGGMSIMTBK",
+    "GRGGORDISP",
     "GRGGSG15",
     "GRGGSG23",
     "GRGGSG25",
@@ -19374,6 +19376,7 @@
     "GRGGSGB12",
     "GRGGSGMP5",
     "GRGGSGMPCS",
+    "GRGGSGMX3",
     "GRGGSGT61",
     "GRGGSGU15",
     "GRGGT11",
@@ -19429,6 +19432,7 @@
     "GRGTWTAPE22",
     "GRGWHTAPE48",
     "GRGWPASTE362",
+    "GRGWPSDISP",
     "GRGWPSTCL",
     "GRO20500299",
     "GRO20500301",
