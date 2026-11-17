@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-16T10:31:45.356945",
+  "updated": "2026-11-17T11:25:11.298671",
   "skus": [
     "012-ELX3",
     "0305394458544",
@@ -13847,6 +13847,7 @@
     "FAIMAXSC50",
     "FAIMAXSC75",
     "FAIMB",
+    "FAIMB12FSC",
     "FAIMB610",
     "FAIMB9FSC",
     "FAIMBCOVE125",
@@ -38788,8 +38789,13 @@
     "WHA45289",
     "WHA45292",
     "WHA45296",
+    "WHA45421",
     "WHA45530",
     "WHA45531",
+    "WHA45705",
+    "WHA45791",
+    "WHA46614",
+    "WHA47035",
     "WISCW10T",
     "WISCW10TM",
     "WISCW11TM",
